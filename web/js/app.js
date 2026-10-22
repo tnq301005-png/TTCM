@@ -181,8 +181,8 @@ function select(r){
  <div class="p-sep"></div>
  <div class="p-ih"><span class="lbl">Ingredients</span><small id="pf"></small></div><ul id="pi"></ul>
  <section class="ai-box ai-only"><div class="ai-head"><img src="assets/images/leaf-ai.svg" alt=""><h3>AI Recipe</h3></div>
-  <button id="gen" class="ai-gen">Write the recipe with AI</button><div id="rc"></div>
-  <p class="note">Written by AI from web sources when available. Check doneness and food safety yourself.</p></section>`;
+  <button id="gen" class="ai-gen">Write the recipe with AI</button><div id="rc"></div><div id="vd">></div>
+  <p class="note">Written by AI from the ingredients and servings above. Check doneness and food safety yourself.</p></section>`;
  $("pfoot").hidden=false;
  draw();$("pn").scrollTop=0;setPanel(true);
 }
@@ -192,36 +192,62 @@ function draw(){
  $("pf").textContent=t===r.s?`original: ${r.s} servings`:`×${fmt(f)}: ${r.s} → ${t} servings`;
  $("pi").innerHTML=ingList().map(i=>`<li><span class="nm">${esc(i.food)}</span><span class="am">${amount(i)}</span></li>`).join("");
  const rc=$("rc");if(rc)rc.innerHTML="";
+ const vd=$("vd");if(vd)vd.innerHTML="";
 }
 const getS=async()=>{if(SV===undefined){try{SV=(await(await apiFetch("api/health")).json()).ai?true:null}catch(e){SV=null}}return SV};
 
-/* ---------- 4) AI recipe ---------- */
-const SHOW_WEB_LINKS=false; // đổi thành true nếu muốn hiện link bấm được của nguồn web
+//Gọi công thức
 const safeUrl=u=>/^https?:\/\//i.test(u)?esc(u):"#";
-function recipeHtml(o){
- const r=o.recipe,li=a=>a.map(x=>`<li>${esc(x)}</li>`).join("");
- const video=(o.videos||[]).length
-  ?`<div class="note"><b>▶ Watch how to cook it</b>${o.videos.map(v=>`<br><a href="${safeUrl(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a> <small>(${esc(v.channel)})</small>`).join("")}</div>`:"";
- const proof=o.grounded
-  ?`<p class="sub">✔ Checked against web sources: ${o.web_sources.map(s=>SHOW_WEB_LINKS?`<a href="${safeUrl(s.url)}" target="_blank" rel="noopener">${esc(s.domain)}</a>`:esc(s.domain)).join(", ")}</p>`
-  :`<p class="note">No web source was found for this dish, so the AI wrote this recipe on its own (like ChatGPT or Gemini). Please double-check it before cooking.</p>`;
- return `<p>${esc(r.summary||"")}</p>${video}`
-  +((r.prepTime||r.cookTime)?`<p class="sub">${r.prepTime?"Prep: "+esc(r.prepTime)+" ":""}${r.cookTime?"Cook: "+esc(r.cookTime):""}</p>`:"")
-  +`<ol>${li(r.steps)}</ol>`
-  +((r.tips||[]).length?`<h4>Tips</h4><ul>${li(r.tips)}</ul>`:"")
-  +(r.notes?`<p class="note">${esc(r.notes)}</p>`:"")
-  +proof;
+function recipeTextHtml(t){
+ const out=[];let open="";
+ const close=()=>{if(open){out.push(`</${open}>`);open=""}};
+ for(const raw of t.split("\n")){
+  const line=raw.trim();if(!line)continue;
+  let m;
+  if(/^steps:?$/i.test(line)){close();out.push("<h4>Steps</h4>")}
+  else if(/^tips:?$/i.test(line)){close();out.push("<h4>Tips</h4>")}
+  else if(m=line.match(/^\d+[.)]\s*(.*)$/)){if(open!=="ol"){close();out.push("<ol>");open="ol"}out.push(`<li>${esc(m[1])}</li>`)}
+  else if(m=line.match(/^[-•*]\s+(.*)$/)){if(open!=="ul"){close();out.push("<ul>");open="ul"}out.push(`<li>${esc(m[1])}</li>`)}
+  else if(/^(prep|cook)\s*:/i.test(line)){close();out.push(`<p class="sub">${esc(line)}</p>`)}
+  else if(/^notes?\s*:/i.test(line)){close();out.push(`<p class="note">${esc(line.replace(/^notes?\s*:\s*/i,""))}</p>`)}
+  else{close();out.push(`<p>${esc(line)}</p>`)}
+ }
+ close();return out.join("");
 }
+function videoHtml(vs){
+ return (vs||[]).length
+  ?`<div class="note"><b>▶ Another way to cook it (video)</b><br><small>The ingredients in the video may differ from this dish.</small>${vs.map(v=>`<br><a href="${safeUrl(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a> <small>(${esc(v.channel)})</small>`).join("")}</div>`:"";
+}
+
 async function gen(){
- const r=cur,b=$("gen"),box=$("rc");b.disabled=true;
- box.textContent="Searching the web for reliable sources, then writing the recipe (about 20-40 s)...";
+ const r=cur,b=$("gen"),box=$("rc"),vbox=$("vd");b.disabled=true;
+ box.textContent="Writing the recipe with AI...";
+ if(vbox)vbox.innerHTML="";
+
+ // Video tải ĐỘC LẬP: gọi cùng lúc với công thức, có kết quả là hiện ngay ở khung riêng.
+ // Không chờ công thức, và nếu video lỗi thì công thức cũng không bị ảnh hưởng.
+ fetch("api/recipe-videos?name="+encodeURIComponent(r.n))
+  .then(x=>x.ok?x.json():{videos:[]})
+  .then(v=>{if(cur===r&&vbox)vbox.innerHTML=videoHtml(v.videos)})
+  .catch(()=>{});
+
  try{
-  const res=await apiFetch("api/recipe-ai",{method:"POST",headers:{"Content-Type":"application/json"},
+  const res=await fetch("api/recipe-ai-stream",{method:"POST",headers:{"Content-Type":"application/json"},
    body:JSON.stringify({name:r.n,servings:tgt(),ingredients:ingList().map(i=>({food:i.food,quantity:i.q,measure:i.m||null}))})});
-  const out=await res.json().catch(()=>({}));
-  if(res.status===401){openAuth("login");throw new Error("Please sign in to write a recipe with AI.")}   // chức năng này yêu cầu đăng nhập
-  if(!res.ok)throw new Error(typeof out.detail==="string"?out.detail:"Could not create the recipe, please try again.");
-  if(cur===r)box.innerHTML=recipeHtml(out);
+  if(!res.ok){
+   const out=await res.json().catch(()=>({}));
+   if(res.status===401)openAuth("login");
+   throw new Error(typeof out.detail==="string"?out.detail:"Could not create the recipe, please try again.");
+  }
+  const reader=res.body.getReader(),dec=new TextDecoder();let text="";
+  while(true){
+   const {done,value}=await reader.read();
+   if(done)break;
+   text+=dec.decode(value,{stream:true});
+   if(cur===r)box.innerHTML=recipeTextHtml(text);   // chữ hiện dần
+  }
+  text+=dec.decode();
+  if(cur===r)box.innerHTML=recipeTextHtml(text);
  }catch(e){if(cur===r)box.textContent=e.message}
  b.disabled=false;
 }
