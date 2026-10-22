@@ -9,6 +9,8 @@ import os
 import secrets
 import sqlite3
 import time
+import itertools
+from fastapi.responses import StreamingResponse
 from typing import List, Optional, Union
 
 from fastapi import Cookie, FastAPI, HTTPException, Response
@@ -255,24 +257,28 @@ class RecipeIn(BaseModel):
     servings: float = Field(gt=0, le=60)
     ingredients: List[IngIn] = Field(min_length=1, max_length=80)
 
-
-_recipe_cache: dict = {}
-
-
-@app.post("/api/recipe-ai")
-def recipe_ai(body: RecipeIn, session: str | None = Cookie(default=None)):
-    # Mỗi lần gọi tốn tiền, nên chỉ cho người đã đăng nhập dùng
+@app.post("/api/recipe-ai-stream")
+def recipe_ai_stream(body: RecipeIn, session: str | None = Cookie(default=None)):
     if not current_user(session):
         raise HTTPException(401, "Vui lòng đăng nhập để tạo công thức.")
-    key = f"{body.name}|{body.servings}"
-    if key in _recipe_cache:
-        return _recipe_cache[key]
+    stream = llm.stream_recipe(body.model_dump())
     try:
-        out = llm.make_recipe(body.model_dump())
+        first = next(stream)   # lấy mẩu chữ đầu tiên; nếu lỗi thì báo đúng mã HTTP
     except llm.AIError as e:
         raise HTTPException(e.status, e.message)
-    _recipe_cache[key] = out
-    return out
+    except StopIteration:
+        raise HTTPException(502, "The AI reply was empty, please retry.")
+    return StreamingResponse(itertools.chain([first], stream),
+                             media_type="text/plain; charset=utf-8",
+                             headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/recipe-videos")
+def recipe_videos(name: str, session: str | None = Cookie(default=None)):
+    if not current_user(session):
+        raise HTTPException(401, "Vui lòng đăng nhập.")
+    return llm.find_videos(name[:200])
+
 
 def re_fullmatch(pattern, value):
     import re
