@@ -273,12 +273,6 @@ def recipe_ai_stream(body: RecipeIn, session: str | None = Cookie(default=None))
                              headers={"Cache-Control": "no-cache"})
 
 
-@app.get("/api/recipe-videos")
-def recipe_videos(name: str, session: str | None = Cookie(default=None)):
-    if not current_user(session):
-        raise HTTPException(401, "Vui lòng đăng nhập.")
-    return llm.find_videos(name[:200])
-
 
 def re_fullmatch(pattern, value):
     import re
