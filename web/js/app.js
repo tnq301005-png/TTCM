@@ -181,7 +181,7 @@ function select(r){
  <div class="p-sep"></div>
  <div class="p-ih"><span class="lbl">Ingredients</span><small id="pf"></small></div><ul id="pi"></ul>
  <section class="ai-box ai-only"><div class="ai-head"><img src="assets/images/leaf-ai.svg" alt=""><h3>AI Recipe</h3></div>
-  <button id="gen" class="ai-gen">Write the recipe with AI</button><div id="rc"></div><div id="vd">></div>
+  <button id="gen" class="ai-gen">Write the recipe with AI</button><div id="rc"></div>
   <p class="note">Written by AI from the ingredients and servings above. Check doneness and food safety yourself.</p></section>`;
  $("pfoot").hidden=false;
  draw();$("pn").scrollTop=0;setPanel(true);
@@ -192,12 +192,11 @@ function draw(){
  $("pf").textContent=t===r.s?`original: ${r.s} servings`:`×${fmt(f)}: ${r.s} → ${t} servings`;
  $("pi").innerHTML=ingList().map(i=>`<li><span class="nm">${esc(i.food)}</span><span class="am">${amount(i)}</span></li>`).join("");
  const rc=$("rc");if(rc)rc.innerHTML="";
- const vd=$("vd");if(vd)vd.innerHTML="";
 }
 const getS=async()=>{if(SV===undefined){try{SV=(await(await apiFetch("api/health")).json()).ai?true:null}catch(e){SV=null}}return SV};
 
 //Gọi công thức
-const safeUrl=u=>/^https?:\/\//i.test(u)?esc(u):"#";
+
 function recipeTextHtml(t){
  const out=[];let open="";
  const close=()=>{if(open){out.push(`</${open}>`);open=""}};
@@ -214,22 +213,11 @@ function recipeTextHtml(t){
  }
  close();return out.join("");
 }
-function videoHtml(vs){
- return (vs||[]).length
-  ?`<div class="note"><b>▶ Another way to cook it (video)</b><br><small>The ingredients in the video may differ from this dish.</small>${vs.map(v=>`<br><a href="${safeUrl(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a> <small>(${esc(v.channel)})</small>`).join("")}</div>`:"";
-}
+
 
 async function gen(){
- const r=cur,b=$("gen"),box=$("rc"),vbox=$("vd");b.disabled=true;
+ const r=cur,b=$("gen"),box=$("rc");b.disabled=true;
  box.textContent="Writing the recipe with AI...";
- if(vbox)vbox.innerHTML="";
-
- // Video tải ĐỘC LẬP: gọi cùng lúc với công thức, có kết quả là hiện ngay ở khung riêng.
- // Không chờ công thức, và nếu video lỗi thì công thức cũng không bị ảnh hưởng.
- fetch("api/recipe-videos?name="+encodeURIComponent(r.n))
-  .then(x=>x.ok?x.json():{videos:[]})
-  .then(v=>{if(cur===r&&vbox)vbox.innerHTML=videoHtml(v.videos)})
-  .catch(()=>{});
 
  try{
   const res=await fetch("api/recipe-ai-stream",{method:"POST",headers:{"Content-Type":"application/json"},
