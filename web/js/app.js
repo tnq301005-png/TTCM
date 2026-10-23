@@ -171,7 +171,7 @@ function setPanel(open){
 }
 function select(r){
  cur=r;hist=[r.i,...hist.filter(i=>i!==r.i)].slice(0,30);save("hm_hist",hist);
- closeChat();
+ if(typeof cbOnSelect==="function")cbOnSelect();
  $("pn").innerHTML=`<div class="p-hero" style="--h:${hue(r)}">${img(r)}${heartBtn(r.i)}</div>
  <h3 class="p-name">${esc(r.n)}</h3>
  <p class="p-line">Diet: ${esc(r.d.map(cap).join(", ")||"none")}</p>
@@ -183,7 +183,6 @@ function select(r){
  <section class="ai-box ai-only"><div class="ai-head"><img src="assets/images/leaf-ai.svg" alt=""><h3>AI Recipe</h3></div>
   <button id="gen" class="ai-gen">Write the recipe with AI</button><div id="rc"></div>
   <p class="note">Written by AI from the ingredients and servings above. Check doneness and food safety yourself.</p></section>`;
- $("pfoot").hidden=false;
  draw();$("pn").scrollTop=0;setPanel(true);
 }
 function draw(){
@@ -246,53 +245,6 @@ function toggleFav(i){
  if(view==="fav")show(fav.map(i=>({r:R[i],k:0})));
 }
 
-/* ---------- 5) Chatbot "Ask about this dish" ---------- */
-// Tên và đơn vị các chất dinh dưỡng trong dữ liệu (r.x = dinh dưỡng của CẢ món)
-const NUT={PROCNT:["Protein","g"],FAT:["Total fat","g"],FASAT:["Saturated fat","g"],FAMS:["Monounsaturated fat","g"],FAPU:["Polyunsaturated fat","g"],FATRN:["Trans fat","g"],
- CHOLE:["Cholesterol","mg"],CHOCDF:["Carbohydrates","g"],SUGAR:["Sugars","g"],FIBTG:["Fiber","g"],WATER:["Water","g"],NA:["Sodium","mg"],K:["Potassium","mg"],CA:["Calcium","mg"],
- FE:["Iron","mg"],MG:["Magnesium","mg"],P:["Phosphorus","mg"],ZN:["Zinc","mg"],VITA_RAE:["Vitamin A","µg"],VITC:["Vitamin C","mg"],VITD:["Vitamin D","µg"],TOCPHA:["Vitamin E","mg"],
- VITK1:["Vitamin K","µg"],THIA:["Thiamin (B1)","mg"],RIBF:["Riboflavin (B2)","mg"],NIA:["Niacin (B3)","mg"],VITB6A:["Vitamin B6","mg"],FOLDFE:["Folate","µg"],VITB12:["Vitamin B12","µg"]};
-let chat=[],chatBusy=false;
-function dishContext(){
- const r=cur,t=tgt();
- const per=Object.entries(r.x||{}).filter(([k])=>NUT[k]).map(([k,v])=>`${NUT[k][0]}: ${fmt(v/r.s)} ${NUT[k][1]}`).join("; ");
- return "You are the nutrition helper inside a recipe app. ONLY explain the ingredients and the nutrition of the dish below "
-  +"(what an ingredient is, what a nutrient does, which ingredients contribute most). Never search for, recommend or compare other dishes; "
-  +"if asked about anything else, say politely that you can only talk about this dish's ingredients and nutrition. "
-  +"Answer in English, in under 120 words, and say values are approximate.\n\n"
-  +`Dish: ${r.n}\nDiet labels: ${r.d.join(", ")||"none"}\nCuisine: ${r.u.join(", ")||"none"}\n`
-  +`Original servings: ${r.s}; calories per serving: ${Math.round(r.c/r.s)} kcal\nServings shown to the user: ${t}\n`
-  +`Ingredients (for ${t} servings):\n`+ingList().map(i=>`- ${[i.q?fmt(i.q):"",i.m!=="<unit>"?i.m:"",i.food].filter(Boolean).join(" ")}${i.w?` (${Math.round(i.w)} g)`:""}`).join("\n")
-  +`\nNutrition per serving: ${per||"not available"}`;
-}
-function renderChat(){
- $("msgs").innerHTML=chat.map(m=>`<div class="m ${m.role==="user"?"u":""} ${m.err?"err":""}">${esc(m.content)}</div>`).join("")
-  +(chatBusy?`<div class="m">Thinking...</div>`:"");
- $("msgs").scrollTop=$("msgs").scrollHeight;
- $("sug").hidden=chat.length>1;
-}
-function openChat(){
- if(!cur)return;
- chat=[{role:"assistant",content:`Hi! Ask me about the ingredients or nutrition of “${cur.n}”.`}];
- $("sug").innerHTML=["What gives this dish most of its calories?","Is this dish high in sodium?","Where does the protein come from?"].map(q=>`<button type="button">${esc(q)}</button>`).join("");
- $("chat").hidden=false;renderChat();setTimeout(()=>$("chatText").focus(),50);
-}
-function closeChat(){$("chat").hidden=true;chat=[];chatBusy=false}
-async function sendChat(text){
- text=text.trim();if(!text||chatBusy||!cur)return;
- chat.push({role:"user",content:text});chatBusy=true;renderChat();
- // Chỉ gửi các lượt hỏi-đáp thật (bỏ lời chào đầu); lượt user đầu tiên được gắn kèm dữ liệu món
- let turns=chat.filter((m,k)=>!(k===0&&m.role==="assistant")&&!m.err&&!(chat[k+1]&&chat[k+1].err)).map(m=>({role:m.role,content:m.content}));
- turns=turns.slice(-19);while(turns.length&&turns[0].role!=="user")turns.shift();
- turns[0]={role:"user",content:dishContext()+"\n\nQuestion: "+turns[0].content};
- try{
-  const res=await apiFetch("api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({input:turns})});
-  const out=await res.json().catch(()=>({}));
-  if(!res.ok)throw new Error(typeof out.detail==="string"?out.detail:"The assistant could not answer, please try again.");
-  chat.push({role:"assistant",content:(out.text||"").trim()||"Sorry, I have no answer for that."});
- }catch(e){chat.push({role:"assistant",content:e.message,err:true})}
- chatBusy=false;renderChat();
-}
 
 /* ---------- Gắn sự kiện cho giao diện ---------- */
 $("go").onclick=()=>{setIng(ingTerms());search()};
@@ -325,12 +277,7 @@ $("pn").addEventListener("click",e=>{const t=e.target,h=t.closest("[data-fav]");
  if(h)toggleFav(+h.dataset.fav);else if(t.id==="gen")gen()});
 $("pclose").onclick=()=>setPanel(false);
 $("scrim").onclick=()=>{setPanel(false)};
-$("ask").onclick=openChat;
-$("chatBack").onclick=closeChat;
-$("chatClose").onclick=()=>{closeChat();setPanel(false)};
-$("sug").addEventListener("click",e=>{const b=e.target.closest("button");if(b)sendChat(b.textContent)});
-$("chatForm").addEventListener("submit",e=>{e.preventDefault();const v=$("chatText").value;$("chatText").value="";sendChat(v)});
-document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(!$("authModal").hidden)closeAuth();else if(!$("chat").hidden)closeChat()}});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("authModal").hidden)closeAuth()});
 
 /* ---------- 6) Đăng ký / đăng nhập ---------- */
 function setErr(f,msg){            // f = "Username" | "Email" | "Password"
