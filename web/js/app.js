@@ -171,7 +171,7 @@ function setPanel(open){
 }
 function select(r){
  cur=r;hist=[r.i,...hist.filter(i=>i!==r.i)].slice(0,30);save("hm_hist",hist);
- closeChat();
+ if(typeof cbOnSelect==="function")cbOnSelect();
  $("pn").innerHTML=`<div class="p-hero" style="--h:${hue(r)}">${img(r)}${heartBtn(r.i)}</div>
  <h3 class="p-name">${esc(r.n)}</h3>
  <p class="p-line">Diet: ${esc(r.d.map(cap).join(", ")||"none")}</p>
