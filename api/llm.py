@@ -1,9 +1,3 @@
-"""
-Nhiệm vụ: nhận 1 món ăn -> AI viết công thức (stream) + tìm video YouTube.
-  - stream_recipe(r): Gemini viết công thức từ nguyên liệu và khẩu phần. Có cache thì trả luôn một lần.
-  - find_videos(name): tìm video YouTube làm nguồn tham khảo thay thế (gọi riêng, không chờ công thức).
-Cache lưu trên ổ đĩa của SERVER (thư mục "cache" cạnh file này) nên dùng chung cho mọi người dùng.
-"""
 import hashlib
 import json
 import os
@@ -11,14 +5,10 @@ import threading
 import time
 import re
 
-import httpx
-
-YT_URL = "https://www.googleapis.com/youtube/v3/search"
-
 # Quá thời gian này (giây) mà Gemini chưa xong thì coi như lỗi.
 GEMINI_TIMEOUT_SEC = 30
 
-# Thư mục lưu cache (nằm cạnh file này). Muốn xoá cache thì xoá thư mục "cache".
+# Thư mục lưu cache 
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
 # Đổi chuỗi này khi bạn sửa prompt, để cache cũ không còn được dùng.
 CACHE_VERSION = "v3-stream"
@@ -164,36 +154,3 @@ def stream_recipe(r: dict):
     text = "".join(parts)
     if text.strip():
         _cache_set(cp, {"text": text})
-
-
-# ---------- YouTube (nguồn tham khảo thay thế) ----------
-def find_videos(name: str) -> dict:
-    key = os.environ.get("YOUTUBE_API_KEY")
-    if not key:
-        return {"videos": [], "warning": "YOUTUBE_API_KEY is not configured."}
-
-    # Cache theo tên món: tiết kiệm cả thời gian lẫn quota YouTube (mỗi lần search tốn 100 đơn vị).
-    cp = _cache_path("video", name.strip().lower())
-    cached = _cache_get(cp)
-    if cached:
-        return cached
-
-    try:
-        r = httpx.get(YT_URL, timeout=10, params={
-            "part": "snippet", "type": "video", "maxResults": 3, "videoEmbeddable": "true",
-            "safeSearch": "strict", "q": f"{name} recipe", "key": key})
-        data = r.json()
-    except (httpx.HTTPError, ValueError):
-        return {"videos": [], "warning": "YouTube request failed."}
-    if r.status_code != 200:
-        return {"videos": [], "warning": data.get("error", {}).get("message", "YouTube request failed.")}
-    result = {"videos": [{
-        "id": v["id"]["videoId"],
-        "url": "https://www.youtube.com/watch?v=" + v["id"]["videoId"],
-        "title": v["snippet"]["title"],
-        "channel": v["snippet"]["channelTitle"],
-        "thumb": v["snippet"].get("thumbnails", {}).get("medium", {}).get("url"),
-    } for v in data.get("items", [])]}
-    if result["videos"]:
-        _cache_set(cp, result)
-    return result
