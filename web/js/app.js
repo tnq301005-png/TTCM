@@ -278,12 +278,8 @@ $("pn").addEventListener("click",e=>{const t=e.target,h=t.closest("[data-fav]");
  if(h)toggleFav(+h.dataset.fav);else if(t.id==="gen")gen()});
 $("pclose").onclick=()=>setPanel(false);
 $("scrim").onclick=()=>{setPanel(false)};
-$("ask").onclick=openChat;
-$("chatBack").onclick=closeChat;
-$("chatClose").onclick=()=>{closeChat();setPanel(false)};
-$("sug").addEventListener("click",e=>{const b=e.target.closest("button");if(b)sendChat(b.textContent)});
 $("chatForm").addEventListener("submit",e=>{e.preventDefault();const v=$("chatText").value;$("chatText").value="";sendChat(v)});
-document.addEventListener("keydown",e=>{if(e.key==="Escape"){if(!$("authModal").hidden)closeAuth();else if(!$("chat").hidden)closeChat()}});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("authModal").hidden)closeAuth()});
 
 /* ---------- 6) Đăng ký / đăng nhập ---------- */
 function setErr(f,msg){            // f = "Username" | "Email" | "Password"
