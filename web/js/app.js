@@ -183,7 +183,6 @@ function select(r){
  <section class="ai-box ai-only"><div class="ai-head"><img src="assets/images/leaf-ai.svg" alt=""><h3>AI Recipe</h3></div>
   <button id="gen" class="ai-gen">Write the recipe with AI</button><div id="rc"></div>
   <p class="note">Written by AI from the ingredients and servings above. Check doneness and food safety yourself.</p></section>`;
- $("pfoot").hidden=false;
  draw();$("pn").scrollTop=0;setPanel(true);
 }
 function draw(){
